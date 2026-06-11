@@ -28,6 +28,28 @@ function fmtTs(ts) {
   } catch { return ts; }
 }
 
+function fmtBytes(bytes) {
+  if (bytes == null) return "—";
+  if (bytes >= 1e12) return (bytes / 1e12).toFixed(1) + " TB";
+  if (bytes >= 1e9)  return (bytes / 1e9).toFixed(1)  + " GB";
+  if (bytes >= 1e6)  return (bytes / 1e6).toFixed(1)  + " MB";
+  return bytes + " B";
+}
+
+function freespaceColor(bytes) {
+  if (bytes == null)   return "var(--muted)";
+  if (bytes < 5e9)     return "var(--danger)";
+  if (bytes < 20e9)    return "var(--warning)";
+  return "var(--success)";
+}
+
+function renderQueue(n) {
+  if (n == null) return "<span class='muted'>—</span>";
+  if (n === 0)   return "<span class='badge badge-ok'>0</span>";
+  if (n <= 10)   return `<span class='badge badge-warning'>${n}</span>`;
+  return `<span class='badge badge-error'>${n}</span>`;
+}
+
 function shorten(s, n = 14) {
   if (!s) return "";
   return s.length > n + 6 ? `${s.slice(0, n)}…${s.slice(-6)}` : s;
@@ -60,46 +82,114 @@ async function loadStatus() {
   } catch (e) {
     badge.className = "badge badge-error";
     badge.textContent = `● Offline — ${e.message}`;
+    renderIssues([], null, []);
     return;
   }
   try {
-    const s = await api("/api/status");
+    const [s, metrics] = await Promise.all([
+      api("/api/status"),
+      api("/api/metrics").catch(() => null),
+    ]);
     $("#stat-peers").textContent = s.peer_count;
     $("#stat-pins").textContent = s.total_pins.toLocaleString("nl-NL");
     $("#stat-version").textContent = s.version?.version || "—";
     $("#stat-alerts").textContent = s.alerts.length;
+    $("#stat-pin-errors").textContent = metrics ? metrics.pin_errors : "—";
+    $("#stat-pin-errors").style.color = (metrics?.pin_errors > 0) ? "var(--danger)" : "";
 
-    renderPeers(s.peers);
-    renderAlerts(s.alerts);
+    renderPeers(s.peers, metrics?.by_peer ?? {}, metrics?.restart_enabled ?? false);
+    renderIssues(s.alerts, metrics?.pin_errors ?? null, metrics?.stale_peers ?? []);
   } catch (e) {
     console.error(e);
     alert(`Kon clusterstatus niet ophalen: ${e.message}`);
   }
 }
 
-function renderPeers(peers) {
+function renderPeers(peers, byPeer, restartEnabled) {
   const tbody = $("#peers-table tbody");
-  tbody.innerHTML = peers.map((p) => `
-    <tr>
-      <td>${escapeHtml(p.name)}</td>
-      <td class="peer-id" title="${escapeHtml(p.id)}">${escapeHtml(shorten(p.id, 16))}</td>
-      <td>${escapeHtml(p.cluster_version || "—")}</td>
-      <td>${escapeHtml(p.ipfs_version || "—")}</td>
-      <td class="num"><strong>${p.pins.toLocaleString("nl-NL")}</strong></td>
-      <td>${
-        p.error
+  tbody.innerHTML = peers.map((p) => {
+    const m = byPeer[p.id] || {};
+    const fs = fmtBytes(m.freespace_bytes);
+    const fsColor = freespaceColor(m.freespace_bytes);
+    const queueHtml = renderQueue(m.pinqueue);
+    const pingStale = m.ping_valid === false
+      ? ` <span class="badge badge-warning">stale</span>` : "";
+
+    const restartCell = restartEnabled
+      ? `<button class="btn btn-xs btn-secondary restart-btn"
+           data-peer-id="${escapeHtml(p.id)}"
+           data-peer-name="${escapeHtml(p.name)}">Restart</button>`
+      : `<span class="muted small" title="Configureer RESTART_WEBHOOK_URL in .env">—</span>`;
+
+    return `
+      <tr>
+        <td>${escapeHtml(p.name)}</td>
+        <td class="peer-id" title="${escapeHtml(p.id)}">${escapeHtml(shorten(p.id, 16))}</td>
+        <td>${escapeHtml(p.cluster_version || "—")}</td>
+        <td>${escapeHtml(p.ipfs_version || "—")}</td>
+        <td class="num"><strong>${p.pins.toLocaleString("nl-NL")}</strong></td>
+        <td style="color:${fsColor}">${escapeHtml(fs)}</td>
+        <td>${queueHtml}</td>
+        <td>${p.error
           ? `<span class="badge badge-error">${escapeHtml(p.error)}</span>`
-          : '<span class="badge badge-ok">healthy</span>'
-      }</td>
-    </tr>
-  `).join("");
+          : `<span class="badge badge-ok">healthy</span>`}${pingStale}</td>
+        <td>${restartCell}</td>
+      </tr>`;
+  }).join("");
+
+  $$(".restart-btn").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      doRestart(btn.dataset.peerId, btn.dataset.peerName, btn)
+    );
+  });
 }
 
-function renderAlerts(alerts) {
-  const card = $("#alerts-card");
-  if (!alerts.length) { card.style.display = "none"; return; }
-  card.style.display = "";
-  $("#alerts-json").textContent = JSON.stringify(alerts, null, 2);
+function renderIssues(alerts, pinErrors, stalePeers) {
+  const body = $(".issues-body");
+  const rows = [];
+
+  if (pinErrors > 0) {
+    rows.push(`<div class="issue-row">
+      <span class="badge badge-error">${pinErrors} pin error${pinErrors === 1 ? "" : "s"}</span>
+      <span class="muted small">pins vastgelopen — gebruik filter status=pin_error om ze te bekijken</span>
+    </div>`);
+  }
+  if (stalePeers.length > 0) {
+    rows.push(`<div class="issue-row">
+      <span class="badge badge-warning">${stalePeers.length} stale peer${stalePeers.length === 1 ? "" : "s"}</span>
+      <span class="muted small">metriek verouderd — peer mogelijk onbereikbaar</span>
+    </div>`);
+  }
+  alerts.forEach((a) => {
+    const text = typeof a === "object" ? JSON.stringify(a) : String(a);
+    rows.push(`<div class="issue-row">
+      <span class="badge badge-warning">alert</span>
+      <code class="small">${escapeHtml(text)}</code>
+    </div>`);
+  });
+
+  if (rows.length === 0) {
+    body.innerHTML = `<span class="badge badge-ok">✓ Geen issues gedetecteerd</span>`;
+  } else {
+    body.innerHTML = rows.join("");
+  }
+}
+
+// ---------- Restart ----------
+
+async function doRestart(peerId, peerName, btn) {
+  if (!confirm(`Restart peer "${peerName}"?\n\nDe peer wordt tijdelijk offline gehaald.`)) return;
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    await api(`/api/peers/${encodeURIComponent(peerId)}/restart`, { method: "POST" });
+    btn.textContent = "✓ Verstuurd";
+    setTimeout(() => { btn.textContent = "Restart"; btn.disabled = false; }, 4000);
+  } catch (e) {
+    alert(`Restart mislukt: ${e.message}`);
+    btn.textContent = "Restart";
+    btn.disabled = false;
+  }
 }
 
 // ---------- Filter & preview ----------
@@ -206,7 +296,6 @@ async function doUnpin() {
     renderResult(res);
     currentPreview = null;
     $("#preview-panel").classList.add("hidden");
-    // Vernieuw de statistieken
     await loadStatus();
   } catch (e) {
     alert(`Bulk unpin mislukt: ${e.message}`);

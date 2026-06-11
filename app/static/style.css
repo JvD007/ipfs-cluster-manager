@@ -247,3 +247,24 @@ footer {
   font-size: 11px;
   font-family: monospace;
 }
+
+.btn-xs {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 5px;
+}
+
+.issues-body {
+  min-height: 32px;
+}
+
+.issue-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.issue-row:last-child {
+  border-bottom: none;
+}

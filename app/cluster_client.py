@@ -195,6 +195,13 @@ class ClusterClient:
         """`GET /monitor/metrics/{metric}`"""
         return await self._request_json("GET", f"/monitor/metrics/{metric}") or []
 
+    async def count_pins_by_status(self, status: str) -> int:
+        """`GET /pins?filter={status}` — telt matching pins zonder de volledige lijst te laden."""
+        count = 0
+        async for _ in self._stream_ndjson("/pins", params={"filter": status}):
+            count += 1
+        return count
+
     async def alerts(self) -> list[dict]:
         """`GET /health/alerts`"""
         return await self._request_json("GET", "/health/alerts") or []

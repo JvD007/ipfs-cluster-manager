@@ -39,6 +39,10 @@
         <div class="stat-value small" id="stat-version">–</div>
       </div>
       <div class="card stat">
+        <div class="stat-label">Pin errors</div>
+        <div class="stat-value" id="stat-pin-errors">–</div>
+      </div>
+      <div class="card stat">
         <div class="stat-label">Actieve alerts</div>
         <div class="stat-value" id="stat-alerts">–</div>
       </div>
@@ -59,7 +63,10 @@
               <th>Cluster</th>
               <th>IPFS</th>
               <th class="num">Pins</th>
+              <th>Vrije schijf</th>
+              <th>Queue</th>
               <th>Status</th>
+              <th>Restart</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -179,10 +186,13 @@
       </div>
     </section>
 
-    <!-- Alerts -->
-    <section class="card" id="alerts-card" style="display:none">
-      <div class="card-header"><h2>Health alerts</h2></div>
-      <pre id="alerts-json"></pre>
+    <!-- Issues & Health -->
+    <section class="card" id="issues-card">
+      <div class="card-header">
+        <h2>Issues &amp; Health</h2>
+        <span class="muted small">Alerts · pin errors · stale peers</span>
+      </div>
+      <div class="issues-body"><span class="muted small">Laden…</span></div>
     </section>
   </main>
 

@@ -52,6 +52,8 @@ class Settings:
     max_bulk_unpin: int = int(os.getenv("MAX_BULK_UNPIN", "5000"))
     # Vereist een dry-run bevestigingstoken voordat daadwerkelijk wordt verwijderd
     require_confirm_token: bool = os.getenv("REQUIRE_CONFIRM_TOKEN", "true").lower() != "false"
+    # Optionele webhook voor peer-restart, bv. https://my-api/restart/{peer_id}
+    restart_webhook_url: Optional[str] = os.getenv("RESTART_WEBHOOK_URL") or None
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = int(os.getenv("PORT", "8765"))
 

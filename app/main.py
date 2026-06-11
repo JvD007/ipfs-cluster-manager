@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import secrets
 import time
@@ -20,6 +21,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -353,6 +355,80 @@ async def api_bulk_unpin(
         "results": results,
         "gc": gc_result,
     }
+
+
+@app.get("/api/metrics")
+async def api_metrics(client: ClusterClient = Depends(get_client)) -> dict:
+    """Cluster-brede metrics: vrije schijfruimte, pinqueue, ping-validiteit en pin-errors."""
+    freespace_raw, pinqueue_raw, ping_raw, pin_errors = await asyncio.gather(
+        asyncio.create_task(client.metrics("freespace")),
+        asyncio.create_task(client.metrics("pinqueue")),
+        asyncio.create_task(client.metrics("ping")),
+        asyncio.create_task(client.count_pins_by_status("pin_error")),
+        return_exceptions=True,
+    )
+
+    def _safe(x: Any) -> list:
+        return [] if isinstance(x, Exception) else (x or [])
+
+    by_peer: dict[str, dict] = {}
+    stale: list[str] = []
+
+    for m in _safe(freespace_raw):
+        pid = m.get("peer", "")
+        valid = bool(m.get("valid"))
+        if not valid and pid not in stale:
+            stale.append(pid)
+        by_peer.setdefault(pid, {})["freespace_bytes"] = (
+            int(m["value"]) if valid and m.get("value") is not None else None
+        )
+
+    for m in _safe(pinqueue_raw):
+        pid = m.get("peer", "")
+        valid = bool(m.get("valid"))
+        by_peer.setdefault(pid, {})["pinqueue"] = (
+            int(m["value"]) if valid and m.get("value") is not None else None
+        )
+
+    for m in _safe(ping_raw):
+        pid = m.get("peer", "")
+        valid = bool(m.get("valid"))
+        val: dict = {}
+        try:
+            val = json.loads(m.get("value") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        addrs = val.get("ipfs_addresses") or []
+        by_peer.setdefault(pid, {}).update({
+            "ping_valid": valid,
+            "ipfs_id": val.get("ipfs_id", ""),
+            "ipfs_address": addrs[0] if addrs else "",
+        })
+        if not valid and pid not in stale:
+            stale.append(pid)
+
+    return {
+        "by_peer": by_peer,
+        "pin_errors": pin_errors if isinstance(pin_errors, int) else 0,
+        "stale_peers": stale,
+        "restart_enabled": bool(settings.restart_webhook_url),
+    }
+
+
+@app.post("/api/peers/{peer_id}/restart")
+async def api_restart_peer(peer_id: str) -> dict:
+    """Stuur een restart-webhook voor een specifieke peer."""
+    if not settings.restart_webhook_url:
+        raise HTTPException(501, "RESTART_WEBHOOK_URL is niet geconfigureerd in .env.")
+    url = settings.restart_webhook_url.replace("{peer_id}", peer_id)
+    async with httpx.AsyncClient(timeout=15) as http:
+        resp = await http.post(url, json={"peer_id": peer_id})
+        if resp.status_code >= 400:
+            raise HTTPException(
+                resp.status_code,
+                f"Webhook antwoordde {resp.status_code}: {resp.text[:200]}",
+            )
+    return {"ok": True, "peer_id": peer_id}
 
 
 @app.post("/api/gc")
