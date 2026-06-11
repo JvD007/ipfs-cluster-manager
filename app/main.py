@@ -145,6 +145,10 @@ class BulkUnpinPayload(BaseModel):
     run_gc: bool = False
 
 
+class RestartIpfsPayload(BaseModel):
+    peer_name: str
+
+
 # --------- Helpers ---------
 
 
@@ -412,7 +416,37 @@ async def api_metrics(client: ClusterClient = Depends(get_client)) -> dict:
         "pin_errors": pin_errors if isinstance(pin_errors, int) else 0,
         "stale_peers": stale,
         "restart_enabled": bool(settings.restart_webhook_url),
+        "ipfs_restart_configured": list(settings.ipfs_api_urls_map.keys()),
     }
+
+
+@app.post("/api/peers/{peer_id}/restart-ipfs")
+async def api_restart_ipfs(peer_id: str, payload: RestartIpfsPayload) -> dict:
+    """Stuur IPFS daemon shutdown voor een peer (process manager herstart hem)."""
+    url_map = settings.ipfs_api_urls_map
+    if not url_map:
+        raise HTTPException(501, "IPFS_API_URLS niet geconfigureerd in .env.")
+    ipfs_url = url_map.get(payload.peer_name)
+    if not ipfs_url:
+        raise HTTPException(
+            400, f"Geen IPFS API URL geconfigureerd voor peer '{payload.peer_name}'."
+        )
+    headers: dict[str, str] = {}
+    token = await _get_token_provider().get_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    async with httpx.AsyncClient(timeout=10, verify=settings.verify_tls) as http:
+        try:
+            resp = await http.post(f"{ipfs_url}/shutdown", headers=headers)
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    resp.status_code, f"IPFS API gaf {resp.status_code}: {resp.text[:200]}"
+                )
+        except (httpx.RemoteProtocolError, httpx.ReadError):
+            # IPFS sluit de verbinding direct bij shutdown — dit is normaal gedrag
+            pass
+    logger.info("IPFS shutdown verstuurd naar peer %s (%s)", payload.peer_name, ipfs_url)
+    return {"ok": True, "peer_id": peer_id, "peer_name": payload.peer_name}
 
 
 @app.post("/api/peers/{peer_id}/restart")

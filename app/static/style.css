@@ -133,6 +133,8 @@ tr:hover td { background: var(--surface-2); }
 .btn-secondary { background: var(--surface-2); border-color: var(--border); }
 .btn-danger { background: var(--danger); }
 .btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+.btn-warning { background: rgba(255, 181, 71, 0.2); color: var(--warning); border-color: rgba(255,181,71,0.4); }
+.btn-warning:hover:not(:disabled) { background: rgba(255, 181, 71, 0.35); }
 
 .filter-grid {
   display: grid;
@@ -252,6 +254,12 @@ footer {
   padding: 3px 8px;
   font-size: 11px;
   border-radius: 5px;
+}
+
+.restart-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .issues-body {

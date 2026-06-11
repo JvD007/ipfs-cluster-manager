@@ -54,6 +54,22 @@ class Settings:
     require_confirm_token: bool = os.getenv("REQUIRE_CONFIRM_TOKEN", "true").lower() != "false"
     # Optionele webhook voor peer-restart, bv. https://my-api/restart/{peer_id}
     restart_webhook_url: Optional[str] = os.getenv("RESTART_WEBHOOK_URL") or None
+    # IPFS API URLs per peer-naam (kommagescheiden: naam=url,naam=url)
+    # Bv. ipfs-3=https://ford.ilse-ai.eu/api/v0,ipfs-4=https://ford.ilse-ai.eu/api/v0
+    ipfs_api_urls: Optional[str] = os.getenv("IPFS_API_URLS") or None
+
+    @property
+    def ipfs_api_urls_map(self) -> dict:
+        """Parses IPFS_API_URLS into {peer_name: base_url}."""
+        if not self.ipfs_api_urls:
+            return {}
+        result = {}
+        for part in self.ipfs_api_urls.split(","):
+            part = part.strip()
+            if "=" in part:
+                name, _, url = part.partition("=")
+                result[name.strip()] = url.strip().rstrip("/")
+        return result
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = int(os.getenv("PORT", "8765"))
 

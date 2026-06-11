@@ -97,7 +97,12 @@ async function loadStatus() {
     $("#stat-pin-errors").textContent = metrics ? metrics.pin_errors : "—";
     $("#stat-pin-errors").style.color = (metrics?.pin_errors > 0) ? "var(--danger)" : "";
 
-    renderPeers(s.peers, metrics?.by_peer ?? {}, metrics?.restart_enabled ?? false);
+    renderPeers(
+      s.peers,
+      metrics?.by_peer ?? {},
+      metrics?.restart_enabled ?? false,
+      metrics?.ipfs_restart_configured ?? [],
+    );
     renderIssues(s.alerts, metrics?.pin_errors ?? null, metrics?.stale_peers ?? []);
   } catch (e) {
     console.error(e);
@@ -105,7 +110,7 @@ async function loadStatus() {
   }
 }
 
-function renderPeers(peers, byPeer, restartEnabled) {
+function renderPeers(peers, byPeer, restartEnabled, ipfsRestartConfigured) {
   const tbody = $("#peers-table tbody");
   tbody.innerHTML = peers.map((p) => {
     const m = byPeer[p.id] || {};
@@ -115,11 +120,23 @@ function renderPeers(peers, byPeer, restartEnabled) {
     const pingStale = m.ping_valid === false
       ? ` <span class="badge badge-warning">stale</span>` : "";
 
-    const restartCell = restartEnabled
+    const ipfsBtn = ipfsRestartConfigured.includes(p.name)
+      ? `<button class="btn btn-xs btn-warning restart-ipfs-btn"
+           data-peer-id="${escapeHtml(p.id)}"
+           data-peer-name="${escapeHtml(p.name)}"
+           title="Stop IPFS daemon — process manager herstart hem">↻ IPFS</button>`
+      : "";
+
+    const clusterBtn = restartEnabled
       ? `<button class="btn btn-xs btn-secondary restart-btn"
            data-peer-id="${escapeHtml(p.id)}"
-           data-peer-name="${escapeHtml(p.name)}">Restart</button>`
-      : `<span class="muted small" title="Configureer RESTART_WEBHOOK_URL in .env">—</span>`;
+           data-peer-name="${escapeHtml(p.name)}"
+           title="Stuur restart-webhook voor cluster daemon">↻ Cluster</button>`
+      : "";
+
+    const restartCell = (ipfsBtn || clusterBtn)
+      ? `<div class="restart-btns">${ipfsBtn}${clusterBtn}</div>`
+      : `<span class="muted small" title="Configureer IPFS_API_URLS of RESTART_WEBHOOK_URL in .env">—</span>`;
 
     return `
       <tr>
@@ -137,6 +154,11 @@ function renderPeers(peers, byPeer, restartEnabled) {
       </tr>`;
   }).join("");
 
+  $$(".restart-ipfs-btn").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      doRestartIpfs(btn.dataset.peerId, btn.dataset.peerName, btn)
+    );
+  });
   $$(".restart-btn").forEach((btn) => {
     btn.addEventListener("click", () =>
       doRestart(btn.dataset.peerId, btn.dataset.peerName, btn)
@@ -176,6 +198,24 @@ function renderIssues(alerts, pinErrors, stalePeers) {
 }
 
 // ---------- Restart ----------
+
+async function doRestartIpfs(peerId, peerName, btn) {
+  if (!confirm(`Stop IPFS daemon op peer "${peerName}"?\n\nDe process manager (systemd/k8s) herstart hem automatisch.`)) return;
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    await api(`/api/peers/${encodeURIComponent(peerId)}/restart-ipfs`, {
+      method: "POST",
+      body: JSON.stringify({ peer_name: peerName }),
+    });
+    btn.textContent = "✓ Verstuurd";
+    setTimeout(() => { btn.textContent = "↻ IPFS"; btn.disabled = false; }, 4000);
+  } catch (e) {
+    alert(`IPFS restart mislukt: ${e.message}`);
+    btn.textContent = "↻ IPFS";
+    btn.disabled = false;
+  }
+}
 
 async function doRestart(peerId, peerName, btn) {
   if (!confirm(`Restart peer "${peerName}"?\n\nDe peer wordt tijdelijk offline gehaald.`)) return;
