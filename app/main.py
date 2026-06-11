@@ -167,6 +167,19 @@ def _summarize_pin(pin: dict) -> dict:
 # --------- Routes ---------
 
 
+def _static_version() -> str:
+    """Short hash of app.js + style.css — forces cache bust on every restart."""
+    h = hashlib.md5()
+    for name in ("app.js", "style.css"):
+        p = BASE_DIR / "static" / name
+        if p.exists():
+            h.update(p.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_STATIC_VER = _static_version()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> Any:
     html = _render_dashboard(
@@ -174,6 +187,7 @@ async def dashboard(request: Request) -> Any:
             "cluster_url": settings.cluster_api_url,
             "max_bulk_unpin": settings.max_bulk_unpin,
             "require_confirm_token": settings.require_confirm_token,
+            "static_ver": _STATIC_VER,
         }
     )
     return HTMLResponse(html)
