@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPFS Cluster Manager</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo">⛓</div>
+        <div>
+          <h1>IPFS Cluster Manager</h1>
+          <p class="muted" id="cluster-url">{{ cluster_url }}</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="health-badge" class="badge badge-unknown">⏳ Verbinden…</span>
+        <button id="refresh-btn" class="btn btn-secondary">Vernieuwen</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Statistieken -->
+    <section class="grid stats">
+      <div class="card stat">
+        <div class="stat-label">Peers</div>
+        <div class="stat-value" id="stat-peers">–</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">Totaal pins</div>
+        <div class="stat-value" id="stat-pins">–</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">Cluster versie</div>
+        <div class="stat-value small" id="stat-version">–</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">Actieve alerts</div>
+        <div class="stat-value" id="stat-alerts">–</div>
+      </div>
+    </section>
+
+    <!-- Peers tabel -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Peers &amp; pins per node</h2>
+        <span class="muted small">Allocations vanuit consensus state</span>
+      </div>
+      <div class="table-wrap">
+        <table id="peers-table">
+          <thead>
+            <tr>
+              <th>Peer</th>
+              <th>Peer ID</th>
+              <th>Cluster</th>
+              <th>IPFS</th>
+              <th class="num">Pins</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Filter & bulk unpin -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Bulk unpin — filter</h2>
+        <span class="muted small">Max {{ max_bulk_unpin }} pins per operatie</span>
+      </div>
+
+      <div class="filter-grid">
+        <label>
+          <span>Naam bevat</span>
+          <input type="text" id="f-name-contains" placeholder="bv. backup-2024" />
+        </label>
+        <label>
+          <span>Naam regex</span>
+          <input type="text" id="f-name-regex" placeholder="^staging-.*\.tar$" />
+        </label>
+        <label>
+          <span>Toegevoegd vóór</span>
+          <input type="datetime-local" id="f-before" />
+        </label>
+        <label>
+          <span>Toegevoegd ná</span>
+          <input type="datetime-local" id="f-after" />
+        </label>
+        <label>
+          <span>Tracker-status</span>
+          <select id="f-status">
+            <option value="">— alle —</option>
+            <option value="pinned">pinned</option>
+            <option value="pinning">pinning</option>
+            <option value="pin_error">pin_error</option>
+            <option value="queued">queued</option>
+            <option value="unpinned">unpinned</option>
+          </select>
+        </label>
+        <label>
+          <span>Metadata (key=value, één per regel)</span>
+          <textarea id="f-metadata" rows="3" placeholder="env=staging&#10;owner=ray-cluster&#10;tag=ephemeral"></textarea>
+        </label>
+        <label class="full">
+          <span>Expliciete CIDs (komma- of regel-gescheiden, overschrijft andere filters)</span>
+          <textarea id="f-cids" rows="2" placeholder="QmAbc...&#10;QmDef..."></textarea>
+        </label>
+      </div>
+
+      <div class="actions">
+        <label class="checkbox">
+          <input type="checkbox" id="run-gc" />
+          <span>Voer IPFS GC uit ná succesvolle unpin</span>
+        </label>
+        <button id="preview-btn" class="btn btn-primary">Voorbeeld tonen</button>
+      </div>
+
+      <!-- Preview resultaat -->
+      <div id="preview-panel" class="preview hidden">
+        <div class="preview-summary">
+          <div>
+            <strong id="preview-count">0</strong>
+            <span class="muted">pins komen overeen</span>
+          </div>
+          <div class="preview-actions">
+            <button id="cancel-preview" class="btn btn-secondary">Annuleren</button>
+            <button id="confirm-unpin" class="btn btn-danger" disabled>
+              Bulk unpin uitvoeren
+            </button>
+          </div>
+        </div>
+        <div id="preview-warning" class="warning">
+          ⚠️ Dit verwijdert de pins uit de cluster en daarmee de garantie dat
+          deze content blijft bestaan. Lees de lijst grondig door voordat je
+          op &laquo;Bulk unpin uitvoeren&raquo; klikt.
+        </div>
+        <label class="checkbox confirm-checkbox">
+          <input type="checkbox" id="acknowledge" />
+          <span>Ik begrijp wat ik doe en wil deze pins verwijderen.</span>
+        </label>
+        <div class="table-wrap">
+          <table id="preview-table">
+            <thead>
+              <tr>
+                <th>CID</th>
+                <th>Naam</th>
+                <th>Timestamp</th>
+                <th>Metadata</th>
+                <th class="num">Allocs</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="preview-truncated" class="muted small hidden">
+          Slechts de eerste 500 worden hier getoond — de unpin actie gebruikt
+          álle gematchte CIDs.
+        </p>
+      </div>
+
+      <!-- Resultaat van bulk-unpin -->
+      <div id="result-panel" class="result hidden">
+        <h3>Resultaat</h3>
+        <div id="result-summary"></div>
+        <details>
+          <summary>Per-CID details</summary>
+          <div class="table-wrap">
+            <table id="result-table">
+              <thead><tr><th>CID</th><th>Status</th><th>Foutmelding</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Alerts -->
+    <section class="card" id="alerts-card" style="display:none">
+      <div class="card-header"><h2>Health alerts</h2></div>
+      <pre id="alerts-json"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p class="muted small">
+      IPFS Cluster Manager · Lokaal draaiend tegen <code id="footer-url">{{ cluster_url }}</code>.
+      Bulk-unpin vereist eerst een dry-run-preview met bevestigingstoken.
+    </p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
