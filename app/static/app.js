@@ -120,12 +120,14 @@ function renderPeers(peers, byPeer, restartEnabled, ipfsRestartConfigured) {
     const pingStale = m.ping_valid === false
       ? ` <span class="badge badge-warning">stale</span>` : "";
 
-    const ipfsBtn = ipfsRestartConfigured.includes(p.name)
-      ? `<button class="btn btn-xs btn-warning restart-ipfs-btn"
-           data-peer-id="${escapeHtml(p.id)}"
-           data-peer-name="${escapeHtml(p.name)}"
-           title="Stop IPFS daemon — process manager herstart hem">↻ IPFS</button>`
-      : "";
+    const ipfsConfigured = ipfsRestartConfigured.includes(p.name);
+    const ipfsBtn = `<button class="btn btn-xs restart-ipfs-btn ${ipfsConfigured ? "btn-warning" : "btn-unconfigured"}"
+         data-peer-id="${escapeHtml(p.id)}"
+         data-peer-name="${escapeHtml(p.name)}"
+         data-configured="${ipfsConfigured}"
+         title="${ipfsConfigured
+           ? "Stop IPFS daemon — process manager herstart hem automatisch"
+           : "Configureer IPFS_API_URLS in .env om te activeren"}">↻ IPFS</button>`;
 
     const clusterBtn = restartEnabled
       ? `<button class="btn btn-xs btn-secondary restart-btn"
@@ -134,9 +136,7 @@ function renderPeers(peers, byPeer, restartEnabled, ipfsRestartConfigured) {
            title="Stuur restart-webhook voor cluster daemon">↻ Cluster</button>`
       : "";
 
-    const restartCell = (ipfsBtn || clusterBtn)
-      ? `<div class="restart-btns">${ipfsBtn}${clusterBtn}</div>`
-      : `<span class="muted small" title="Configureer IPFS_API_URLS of RESTART_WEBHOOK_URL in .env">—</span>`;
+    const restartCell = `<div class="restart-btns">${ipfsBtn}${clusterBtn}</div>`;
 
     return `
       <tr>
@@ -200,6 +200,15 @@ function renderIssues(alerts, pinErrors, stalePeers) {
 // ---------- Restart ----------
 
 async function doRestartIpfs(peerId, peerName, btn) {
+  if (btn.dataset.configured !== "true") {
+    alert(
+      `IPFS_API_URLS is niet geconfigureerd voor peer "${peerName}".\n\n` +
+      `Voeg dit toe aan .env:\n` +
+      `IPFS_API_URLS=${peerName}=https://<jouw-ipfs-api-url>/api/v0\n\n` +
+      `Meerdere peers: peer1=url1,peer2=url2`
+    );
+    return;
+  }
   if (!confirm(`Stop IPFS daemon op peer "${peerName}"?\n\nDe process manager (systemd/k8s) herstart hem automatisch.`)) return;
   btn.disabled = true;
   btn.textContent = "…";
