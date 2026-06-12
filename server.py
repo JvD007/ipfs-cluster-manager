@@ -6,20 +6,15 @@ zet HOST=0.0.0.0 (let op: dan is auth/firewalling je eigen verantwoordelijkheid)
 """
 from __future__ import annotations
 
-import os
-
 import uvicorn
 
-# Defaults voor lokaal draaien — overschrijfbaar via .env / env vars.
-os.environ.setdefault("HOST", "127.0.0.1")
-os.environ.setdefault("PORT", "8765")
-
-from app.main import app  # noqa: E402
+from app.main import app
+from app.config import settings
 
 
 def main() -> None:
-    host = os.environ["HOST"]
-    port = int(os.environ["PORT"])
+    host = settings.host
+    port = settings.port
     print()
     print("=" * 60)
     print("  IPFS Cluster Manager")
