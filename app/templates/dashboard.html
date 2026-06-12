@@ -24,6 +24,34 @@
   </header>
 
   <main>
+    <!-- Kubo telemetry notice -->
+    <section class="card notice-info" id="kubo-telemetry-notice">
+      <div class="notice-header">
+        <strong>ℹ Kubo verzamelt anonieme gebruiksdata</strong>
+        <button class="notice-dismiss" id="dismiss-telemetry" title="Sluiten">✕</button>
+      </div>
+      <div class="notice-body">
+        <div class="notice-grid">
+          <div>
+            <div class="notice-row"><span class="notice-label">Wat:</span> Feature-gebruik en configuratie (geen persoonsgegevens)</div>
+            <div class="notice-row"><span class="notice-label">Wanneer:</span> Eerste meting over 15 min, daarna elke 24u</div>
+            <div class="notice-row"><span class="notice-label">Hoe:</span> HTTP POST naar <code>https://telemetry.ipshipyard.dev</code></div>
+            <div class="notice-row"><span class="notice-label">Anoniem ID:</span> <code>673ddaad-ba3b-4d40-8fa6-5b27d13f83ce</code></div>
+          </div>
+          <div class="notice-optout">
+            <div class="notice-optout-title">Afmelden vóór eerste meting:</div>
+            <pre>IPFS_TELEMETRY=off</pre>
+            <div class="muted small">of via de CLI:</div>
+            <pre>ipfs config Plugins.Plugins.telemetry.Config.Mode off</pre>
+            <div class="muted small">Inspecteer data: <code>GOLOG_LOG_LEVEL="telemetry=debug"</code></div>
+          </div>
+        </div>
+        <div class="notice-footer">
+          <a class="notice-link" href="https://github.com/ipfs/kubo/blob/master/docs/telemetry.md" target="_blank" rel="noopener">Meer informatie →</a>
+        </div>
+      </div>
+    </section>
+
     <!-- Statistieken -->
     <section class="grid stats">
       <div class="card stat">

@@ -376,7 +376,21 @@ function renderResult(res) {
 
 // ---------- Event listeners ----------
 
+function initTelemetryNotice() {
+  const notice = $("#kubo-telemetry-notice");
+  if (!notice) return;
+  if (localStorage.getItem("kubo-telemetry-dismissed") === "1") {
+    notice.classList.add("hidden");
+    return;
+  }
+  $("#dismiss-telemetry").addEventListener("click", () => {
+    notice.classList.add("hidden");
+    localStorage.setItem("kubo-telemetry-dismissed", "1");
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  initTelemetryNotice();
   loadStatus();
   $("#refresh-btn").addEventListener("click", loadStatus);
   $("#preview-btn").addEventListener("click", doPreview);
