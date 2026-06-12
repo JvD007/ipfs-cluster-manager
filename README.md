@@ -6,6 +6,8 @@ A lightweight web dashboard for [IPFS Cluster](https://ipfscluster.io/) — moni
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
+![Dashboard screenshot](docs/screenshot.png)
+
 ---
 
 ## Features
