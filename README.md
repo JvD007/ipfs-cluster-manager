@@ -1,96 +1,103 @@
 # IPFS Cluster Manager
 
-Python-gebaseerde beheer-tool voor [IPFS Cluster](https://ipfscluster.io/), met
-een web dashboard voor monitoring én veilige bulk-unpin operaties op basis van
-tijdstempel, naam, regex of metadata-tags.
+A lightweight web dashboard for [IPFS Cluster](https://ipfscluster.io/) — monitor peers, inspect pins, and safely bulk-unpin by name, timestamp, metadata tag, or CID.
+
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
+---
 
 ## Features
 
-- **Dashboard** — clusterstatus, peer-overzicht, pin-telling per node
-  (afgeleid uit de consensus allocations), versie-info en actieve health
-  alerts. Auto-refresh elke 30 seconden.
-- **Filteren** op naam (substring/regex), `timestamp` (vóór/ná), metadata
-  key/value (met `*` wildcards of `re:` regex prefix), tracker-status, of
-  expliciete CID-lijst.
-- **Veilige bulk-unpin workflow**:
-  1. Preview (dry-run) toont gematchte pins én geeft een eenmalig
-     `confirm_token` terug;
-  2. Confirm-checkbox + browser confirm-dialog vóór uitvoering;
-  3. Server controleert dat het token bij exact dezelfde CID-set hoort
-     (sha256-fingerprint), en het token is single-use;
-  4. Hard limiet op aantal pins per operatie (`MAX_BULK_UNPIN`, default 5000);
-  5. Optioneel: `POST /ipfs/gc` ná succesvolle unpin.
-- **Async** (httpx) — streaming endpoints (`/allocations`, `/pins`, `/peers`)
-  worden via NDJSON afgehandeld, met parallelle unpins (max 8 gelijktijdig).
-- **Auth** — Keycloak/OIDC met **automatische token-refresh** (refresh_token + fallback), of statisch JWT, of basic-auth.
-- **Geen externe state** — alle state (preview-tokens) leeft in-memory met
-  TTL van 10 minuten.
+- **Dashboard** — cluster status, peer overview, pin count per node, version info, and active health alerts. Auto-refreshes every 30 seconds.
+- **Flexible filtering** — by name (substring or regex), `timestamp` (before/after), metadata key/value (with `*` wildcards or `re:` regex prefix), tracker status, or explicit CID list.
+- **Safe bulk-unpin workflow**:
+  1. Preview (dry-run) shows matched pins and returns a one-time `confirm_token`;
+  2. Confirm checkbox + browser confirm dialog before execution;
+  3. Server verifies the token matches the exact same CID set (sha256 fingerprint), and the token is single-use;
+  4. Hard per-operation limit (`MAX_BULK_UNPIN`, default 5000);
+  5. Optional: run IPFS GC after a successful unpin.
+- **Peer restart buttons** — restart the IPFS daemon (via IPFS API shutdown) or trigger a cluster daemon restart via webhook, per peer.
+- **Background refresh** — proactively warms the auth token and refreshes cached cluster data on a configurable interval.
+- **Auth** — Keycloak/OIDC with automatic token refresh, static JWT, or basic auth.
+- **No external state** — preview tokens live in-memory with a 10-minute TTL.
 
-## Installatie
+---
+
+## Installation
 
 ```bash
+git clone https://github.com/JvD007/ipfs-cluster-manager.git
 cd ipfs-cluster-manager
+
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+
 cp .env.example .env
-# vul .env met jouw cluster URL en credentials
+# edit .env with your cluster URL and credentials
 python run.py
 ```
 
-Open daarna [http://127.0.0.1:8765](http://127.0.0.1:8765).
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
-## Configuratie
+For development with auto-reload:
 
-Alle instellingen via env vars (zie `.env.example`):
+```bash
+uvicorn app.main:app --reload
+```
 
-| Variabele | Default | Beschrijving |
+---
+
+## Configuration
+
+All settings via environment variables (see `.env.example`):
+
+| Variable | Default | Description |
 |---|---|---|
-| `CLUSTER_API_URL` | `http://127.0.0.1:9094` | REST API endpoint van Cluster |
-| `CLUSTER_USERNAME` / `CLUSTER_PASSWORD` | – | Basic Auth credentials |
-| `CLUSTER_JWT` | – | Statisch JWT bearer token (geen auto-refresh) |
-| `KEYCLOAK_URL` | – | OIDC issuer base (bv. `https://host/keycloak`) |
-| `KEYCLOAK_REALM` | – | Realm naam |
+| `CLUSTER_API_URL` | `http://127.0.0.1:9094` | IPFS Cluster REST API endpoint |
+| `CLUSTER_USERNAME` / `CLUSTER_PASSWORD` | – | Basic auth credentials |
+| `CLUSTER_JWT` | – | Static JWT bearer token (no auto-refresh) |
+| `KEYCLOAK_URL` | – | OIDC issuer base (e.g. `https://host/keycloak`) |
+| `KEYCLOAK_REALM` | – | Realm name |
 | `KEYCLOAK_CLIENT_ID` | – | OIDC client ID |
-| `KEYCLOAK_CLIENT_SECRET` | – | Client secret (voor confidential clients) |
-| `KEYCLOAK_USERNAME` / `KEYCLOAK_PASSWORD` | – | User-credentials (password-grant) |
-| `KEYCLOAK_REFRESH_SKEW` | `60` | Seconden vóór expiry waarop alvast wordt ververst |
-| `VERIFY_TLS` | `true` | Zet op `false` voor self-signed certs |
-| `REQUEST_TIMEOUT` | `30` | Seconden, voor lange `/allocations` lijsten kan dit omhoog |
-| `MAX_BULK_UNPIN` | `5000` | Hard limiet per operatie |
-| `REQUIRE_CONFIRM_TOKEN` | `true` | Server-side dry-run verplichting |
-| `HOST` / `PORT` | `127.0.0.1` / `8765` | Binding van de web UI |
+| `KEYCLOAK_CLIENT_SECRET` | – | Client secret (for confidential clients) |
+| `KEYCLOAK_USERNAME` / `KEYCLOAK_PASSWORD` | – | User credentials (password grant) |
+| `KEYCLOAK_REFRESH_SKEW` | `60` | Seconds before expiry to proactively refresh |
+| `VERIFY_TLS` | `true` | Set `false` for self-signed certs |
+| `REQUEST_TIMEOUT` | `30` | HTTP timeout in seconds (raise for large pin sets) |
+| `MAX_BULK_UNPIN` | `5000` | Hard per-operation unpin limit |
+| `REQUIRE_CONFIRM_TOKEN` | `true` | Enforce server-side dry-run before unpin |
+| `IPFS_API_URLS` | – | Per-peer IPFS API URLs for daemon restart (comma-separated `name=url` pairs) |
+| `RESTART_WEBHOOK_URL` | – | Webhook for cluster daemon restart; `{peer_id}` is substituted |
+| `BACKGROUND_REFRESH_INTERVAL` | `30` | Token/data refresh interval in seconds (0 = disabled) |
+| `HOST` / `PORT` | `127.0.0.1` / `8765` | Web UI bind address |
 
-### Verbinden met een Cluster achter Nginx + Keycloak (aanbevolen)
-
-Vul Keycloak credentials in `.env`. De tool haalt zelf tokens op bij
-Keycloak en ververst ze automatisch:
+### Connecting to a Cluster behind Nginx + Keycloak
 
 ```env
-CLUSTER_API_URL=https://ford.ilse-ai.eu/cluster
-KEYCLOAK_URL=https://ford.ilse-ai.eu/keycloak
-KEYCLOAK_REALM=ilse-ai
-KEYCLOAK_CLIENT_ID=ilse-ai-services
+CLUSTER_API_URL=https://cluster.example.com/cluster
+KEYCLOAK_URL=https://cluster.example.com/keycloak
+KEYCLOAK_REALM=myrealm
+KEYCLOAK_CLIENT_ID=my-client
 KEYCLOAK_CLIENT_SECRET=...
-KEYCLOAK_USERNAME=jaco
+KEYCLOAK_USERNAME=admin
 KEYCLOAK_PASSWORD=...
 ```
 
-**Wat er onder de motorkap gebeurt:**
+The tool fetches an initial access + refresh token at startup and silently refreshes it before it expires. If the refresh token itself expires, it falls back to a fresh password grant automatically. A lock prevents concurrent requests from racing to refresh simultaneously.
 
-1. Bij startup haalt de tool een initieel access_token + refresh_token
-   op via `grant_type=password` (of `client_credentials` als geen user
-   is opgegeven).
-2. Elke API-call gebruikt het cached token. Zodra het binnen
-   `KEYCLOAK_REFRESH_SKEW` seconden verloopt, wordt het ververst via
-   `grant_type=refresh_token` — in de meeste gevallen onzichtbaar voor
-   de user.
-3. Als de refresh-token zelf is verlopen of geweigerd, valt de tool
-   automatisch terug op een verse password-grant.
-4. Een `asyncio.Lock` voorkomt dat concurrent requests gelijktijdig een
-   refresh proberen — 100 parallelle calls tijdens een refresh-window
-   geven samen één token-request.
+### Enabling peer IPFS restart
 
-## Architectuur
+```env
+IPFS_API_URLS=peer1=https://node1.example.com/api/v0,peer2=https://node2.example.com/api/v0
+```
+
+This sends `POST /api/v0/shutdown` to the target node. Your process manager (systemd, Kubernetes) is expected to restart the daemon.
+
+---
+
+## Architecture
 
 ```
 ┌──────────────────────┐    ┌──────────────────┐    ┌──────────────────┐
@@ -98,106 +105,136 @@ KEYCLOAK_PASSWORD=...
 │   JS dashboard)      │    │  (app/main.py)   │    │  REST API        │
 └──────────────────────┘    └──────────────────┘    │  (port 9094)     │
                                     │                └──────────────────┘
-                            in-memory preview-tokens
+                            in-memory preview tokens
                             (sha256 fingerprint, TTL 10m)
 ```
-
-### Bestanden
 
 ```
 ipfs-cluster-manager/
 ├── app/
-│   ├── cluster_client.py   # async REST client (httpx) — alle Cluster endpoints
-│   ├── token_provider.py   # Keycloak OIDC token-fetch + auto-refresh
-│   ├── filters.py          # PinFilter — timestamp, metadata-tags, regex, etc.
-│   ├── config.py           # env-config (incl. eenvoudige .env loader)
-│   ├── main.py             # FastAPI app — /api/status, /api/preview-unpin, /api/bulk-unpin
+│   ├── cluster_client.py      # async REST client (httpx)
+│   ├── token_provider.py      # Keycloak OIDC token fetch + auto-refresh
+│   ├── filters.py             # PinFilter — timestamp, metadata, regex, etc.
+│   ├── config.py              # env config
+│   ├── main.py                # FastAPI app and API routes
 │   ├── templates/dashboard.html
 │   └── static/{style.css, app.js}
 ├── tests/
-│   ├── test_filters.py        # 14 unit-tests voor filterregels
-│   ├── test_api.py            # 10 integration-tests met gemockte Cluster API
-│   └── test_token_provider.py # 9 tests voor Keycloak token-refresh
+│   ├── test_filters.py        # 14 unit tests for filter logic
+│   ├── test_api.py            # 10 integration tests with mocked Cluster API
+│   └── test_token_provider.py # 9 tests for Keycloak token refresh
 ├── requirements.txt
 ├── run.py
 └── .env.example
 ```
 
-## API endpoints (server-side)
+---
 
-| Methode | Pad | Beschrijving |
+## API
+
+| Method | Path | Description |
 |---|---|---|
 | `GET` | `/` | Dashboard (HTML) |
-| `GET` | `/api/health` | Health check van de Cluster peer |
-| `GET` | `/api/status` | Cluster info + peers + pins per node |
-| `GET` | `/api/pins` | Alle pins (allocations) met metadata |
-| `POST` | `/api/preview-unpin` | Filter toepassen, levert dry-run + token |
-| `POST` | `/api/bulk-unpin` | Voert unpin uit; vereist `confirm_token` |
-| `POST` | `/api/gc` | Voer IPFS GC uit |
+| `GET` | `/api/health` | Cluster peer health check |
+| `GET` | `/api/status` | Cluster info, peers, and pin counts |
+| `GET` | `/api/pins` | All pins (allocations) with metadata |
+| `POST` | `/api/preview-unpin` | Apply filter, returns dry-run list + token |
+| `POST` | `/api/bulk-unpin` | Execute unpin; requires `confirm_token` |
+| `POST` | `/api/peers/{peer_id}/restart-ipfs` | Restart IPFS daemon on a peer |
+| `POST` | `/api/peers/{peer_id}/restart` | Trigger cluster daemon restart webhook |
+| `POST` | `/api/gc` | Run IPFS garbage collection |
 
-OpenAPI/Swagger docs draaien op `/docs`.
+Interactive docs at `/docs`.
 
-## Filters — voorbeelden
+---
 
-**Alle staging-pins ouder dan 30 dagen:**
-- *Naam regex:* `^staging-`
-- *Toegevoegd vóór:* `2026-05-11T00:00:00Z`
+## Filter examples
 
-**Alle ephemeral pins (metadata):**
+**All staging pins older than 30 days:**
+- Name regex: `^staging-`
+- Added before: `2026-05-11T00:00:00Z`
+
+**All ephemeral pins via metadata:**
 ```
 env=staging
 tag=ephemeral
 ```
 
-**Modellen ouder dan een specifieke release (wildcard):**
+**Wildcard on metadata value:**
 ```
 tag=model-v0.*
 ```
 
-**Regex op metadata-waarde:**
+**Regex on metadata value:**
 ```
 tag=re:^(ephemeral|temp-.*)$
 ```
 
-## Tests draaien
+---
+
+## Tests
 
 ```bash
-pip install pytest
+pip install pytest pytest-asyncio
 pytest -q
 ```
 
-Levert 33 tests op: filter-logica, API-flow (preview → token validatie →
-bulk-unpin → token-single-use), én Keycloak token-refresh (cache,
-refresh-flow, fallback bij invalid_grant, concurrent locking).
+33 tests: filter logic, full preview → token validation → bulk-unpin → single-use token flow, and Keycloak token refresh (cache, refresh flow, `invalid_grant` fallback, concurrent locking).
 
-## Veiligheid — designkeuzes
+---
 
-1. **Dry-run verplicht**: het token-paradigma maakt het onmogelijk om
-   `/api/bulk-unpin` direct aan te roepen zonder eerst de exacte CID-set
-   in een preview te hebben gezien. De server bewaart een
-   sha256-fingerprint van de gematchte CIDs en accepteert geen unpin
-   wanneer de payload daarvan afwijkt (ook niet een subset).
-2. **Single-use tokens**: na een succesvolle unpin wordt het token
-   verwijderd. Replay-aanvallen / dubbele submits worden zo voorkomen.
-3. **Bulk-limiet**: `MAX_BULK_UNPIN` voorkomt dat één filter per ongeluk
-   de hele pinset verwijdert. Verfijn het filter wanneer de limiet wordt
-   geraakt.
-4. **Lokale binding**: default `HOST=127.0.0.1`. Zet alleen op `0.0.0.0`
-   wanneer je hem áchter een reverse proxy met eigen authenticatie zet.
-5. **Geen unpin-by-tag in één call**: er is geen "delete all with tag=X"
-   endpoint zonder voorafgaande preview — exact om diezelfde reden.
+## Security design
 
-## Productie-deployment tips
+1. **Dry-run required**: the token paradigm makes it impossible to call `/api/bulk-unpin` without having first seen the exact matched CID set in a preview. The server stores a sha256 fingerprint of those CIDs and rejects unpins that deviate (including subsets).
+2. **Single-use tokens**: consumed on successful unpin, preventing replay and double-submit.
+3. **Bulk limit**: `MAX_BULK_UNPIN` prevents an accidental filter from wiping the entire pin set. Refine the filter if you hit the limit.
+4. **Local binding**: default `HOST=127.0.0.1`. Only expose on `0.0.0.0` behind a reverse proxy with its own authentication layer.
+5. **No blind delete-by-tag**: there is no "delete all with tag=X" endpoint that bypasses the preview step.
 
-- Draai achter Nginx met TLS en (Keycloak) authenticatie. De tool zelf
-  doet géén eigen user-auth — die laag schuif je ervoor.
-- Voor zeer grote pinsets (>100k): verhoog `REQUEST_TIMEOUT` en overweeg
-  je filter te beginnen met `before=` om de allocations-lijst aan
-  client-side te verkleinen. Cluster's eigen `filter=` query param
-  ondersteunt geen metadata-filtering, daarom doen wij dat client-side.
-- Logging gaat naar stdout in standaard Python format — koppel aan je
-  bestaande Prometheus/Grafana of journald setup.
+---
 
-## Licentie
+## Production deployment
 
-MIT.
+- Run behind Nginx with TLS and authentication (Keycloak or similar). This tool has no built-in user auth.
+- For very large pin sets (>100k): increase `REQUEST_TIMEOUT` and use `before=` to narrow the allocation list. Cluster's own `filter=` query param does not support metadata filtering, so filtering happens client-side.
+- Logs go to stdout in standard Python format — compatible with journald, Prometheus/Loki, or any log aggregator.
+
+### systemd user service
+
+```ini
+[Unit]
+Description=IPFS Cluster Manager
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ipfs-cluster-manager
+EnvironmentFile=/opt/ipfs-cluster-manager/.env
+ExecStart=/opt/ipfs-cluster-manager/.venv/bin/python run.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now ipfs-cluster-manager
+journalctl --user -u ipfs-cluster-manager -f
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `401 Unauthorized` on `/api/health` | Keycloak credentials wrong — verify token endpoint with `curl` |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | Self-signed cert → set `VERIFY_TLS=false` in `.env` |
+| Dashboard stays empty | Check browser console and `python run.py` logs |
+| `Address already in use` | Port conflict → set `PORT=8766` in `.env` |
+
+---
+
+## License
+
+MIT
