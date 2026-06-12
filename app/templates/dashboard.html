@@ -28,27 +28,93 @@
     <!-- Kubo telemetry notice -->
     <section class="card notice-info" id="kubo-telemetry-notice">
       <div class="notice-header">
-        <strong>ℹ Kubo verzamelt anonieme gebruiksdata</strong>
+        <strong>ℹ Kubo Telemetry — anonieme gebruiksdata</strong>
         <button class="notice-dismiss" id="dismiss-telemetry" title="Sluiten">✕</button>
       </div>
       <div class="notice-body">
+
+        <!-- Top row: summary + opt-out -->
         <div class="notice-grid">
           <div>
-            <div class="notice-row"><span class="notice-label">Wat:</span> Feature-gebruik en configuratie (geen persoonsgegevens)</div>
-            <div class="notice-row"><span class="notice-label">Wanneer:</span> Eerste meting over 15 min, daarna elke 24u</div>
-            <div class="notice-row"><span class="notice-label">Hoe:</span> HTTP POST naar <code>https://telemetry.ipshipyard.dev</code></div>
+            <div class="notice-row"><span class="notice-label">Endpoint:</span> <code>https://telemetry.ipshipyard.dev</code></div>
+            <div class="notice-row"><span class="notice-label">Interval:</span> Eerste meting over 15 min, daarna elke 24u</div>
             <div class="notice-row"><span class="notice-label">Anoniem ID:</span> <code>673ddaad-ba3b-4d40-8fa6-5b27d13f83ce</code></div>
+            <div class="notice-row"><span class="notice-label">Privacy:</span> Geen PII — UUID + configuratie-metadata</div>
           </div>
           <div class="notice-optout">
-            <div class="notice-optout-title">Afmelden vóór eerste meting:</div>
-            <pre>IPFS_TELEMETRY=off</pre>
-            <div class="muted small">of via de CLI:</div>
+            <div class="notice-optout-title">Opt-out (vóór eerste meting):</div>
+            <div class="muted small">Via omgevingsvariabele:</div>
+            <pre>export IPFS_TELEMETRY=off</pre>
+            <div class="muted small">Via IPFS config:</div>
             <pre>ipfs config Plugins.Plugins.telemetry.Config.Mode off</pre>
-            <div class="muted small">Inspecteer data: <code>GOLOG_LOG_LEVEL="telemetry=debug"</code></div>
+            <div class="muted small">Data inspecteren: <code>GOLOG_LOG_LEVEL="telemetry=debug"</code></div>
           </div>
         </div>
+
+        <!-- Modes table -->
+        <details class="notice-details">
+          <summary>Modi</summary>
+          <table class="notice-table">
+            <thead><tr><th>Modus</th><th>Gedrag</th></tr></thead>
+            <tbody>
+              <tr><td><code>auto</code></td><td>Standaard bij eerste start. Toont deze melding, wacht 15 min, verstuurt daarna elke 24u.</td></tr>
+              <tr><td><code>on</code></td><td>Telemetry actief, geen wachttijd of melding.</td></tr>
+              <tr><td><code>off</code></td><td>Telemetry uitgeschakeld. UUID-bestand wordt verwijderd.</td></tr>
+            </tbody>
+          </table>
+        </details>
+
+        <!-- What's collected -->
+        <details class="notice-details">
+          <summary>Wat wordt verzameld?</summary>
+          <div class="notice-collected-grid">
+            <div>
+              <div class="notice-collected-heading">Algemeen</div>
+              <ul class="notice-list">
+                <li>UUID (anoniem node-ID)</li>
+                <li>Kubo-versie (agent version)</li>
+                <li>Privaat netwerk (ja/nee)</li>
+                <li>Repository-grootte (in buckets: 1 GB, 5 GB … &gt;10 TB)</li>
+                <li>Uptime (in buckets: 1d, 2d … &gt;30d)</li>
+              </ul>
+              <div class="notice-collected-heading">Routing &amp; Discovery</div>
+              <ul class="notice-list">
+                <li>Custom bootstrap peers</li>
+                <li>Routing type &amp; Accelerated DHT</li>
+                <li>Delegated routers count</li>
+                <li>AutoConf enabled / custom URL</li>
+                <li>mDNS enabled</li>
+              </ul>
+            </div>
+            <div>
+              <div class="notice-collected-heading">Content providing</div>
+              <ul class="notice-list">
+                <li>Provide &amp; Reprovide strategy</li>
+                <li>Sweep-based provider</li>
+                <li>Custom interval / MaxWorkers</li>
+              </ul>
+              <div class="notice-collected-heading">Netwerk</div>
+              <ul class="notice-list">
+                <li>AutoNAT service mode &amp; reachability</li>
+                <li>Hole punching</li>
+                <li>Circuit relay adressen</li>
+                <li>Publieke IPv4/IPv6</li>
+                <li>AutoWSS / custom domain suffix</li>
+              </ul>
+              <div class="notice-collected-heading">Platform</div>
+              <ul class="notice-list">
+                <li>OS &amp; CPU-architectuur</li>
+                <li>Container/VM-detectie</li>
+              </ul>
+            </div>
+          </div>
+          <p class="muted small" style="margin-top:10px">
+            Broncode: <a class="notice-link" href="https://github.com/ipfs/kubo/blob/master/plugin/plugins/telemetry/telemetry.go" target="_blank" rel="noopener">telemetry.go → LogEvent struct</a>
+          </p>
+        </details>
+
         <div class="notice-footer">
-          <a class="notice-link" href="https://github.com/ipfs/kubo/blob/master/docs/telemetry.md" target="_blank" rel="noopener">Meer informatie →</a>
+          <a class="notice-link" href="https://github.com/ipfs/kubo/blob/master/docs/telemetry.md" target="_blank" rel="noopener">Volledige Kubo telemetry documentatie →</a>
         </div>
       </div>
     </section>
