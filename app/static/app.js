@@ -376,6 +376,16 @@ function renderResult(res) {
 
 // ---------- Event listeners ----------
 
+function initAboutModal() {
+  const modal = $("#about-modal");
+  const open  = () => modal.classList.remove("hidden");
+  const close = () => modal.classList.add("hidden");
+  $("#about-btn").addEventListener("click", open);
+  $("#about-close").addEventListener("click", close);
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+}
+
 function initTelemetryNotice() {
   const notice = $("#kubo-telemetry-notice");
   if (!notice) return;
@@ -390,6 +400,7 @@ function initTelemetryNotice() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  initAboutModal();
   initTelemetryNotice();
   loadStatus();
   $("#refresh-btn").addEventListener("click", loadStatus);
