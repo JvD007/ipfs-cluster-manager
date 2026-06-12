@@ -18,6 +18,7 @@ import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -90,6 +91,60 @@ def _get_token_provider() -> TokenProvider:
     return _token_provider
 
 
+# ---------------------------------------------------------------------------
+# In-memory data cache — gevuld door de achtergrond-refresh task
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _CacheEntry:
+    data: Any
+    fetched_at: float
+
+
+_cache: dict[str, _CacheEntry] = {}
+_CACHE_KEYS = ("status", "metrics")
+
+
+def _cache_get(key: str) -> Optional[Any]:
+    entry = _cache.get(key)
+    return entry.data if entry else None
+
+
+def _cache_set(key: str, data: Any) -> None:
+    _cache[key] = _CacheEntry(data=data, fetched_at=time.time())
+
+
+async def _background_refresh(interval: int) -> None:
+    """Periodiek de Keycloak-token warm houden en cluster-data vernieuwen."""
+    logger.info("Achtergrond-refresh gestart (interval=%ds)", interval)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            break
+
+        # Token warm houden
+        try:
+            await _get_token_provider().get_token()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Achtergrond token-refresh mislukt: %s", exc)
+
+        # Cluster data vernieuwen
+        client = get_client()
+        try:
+            status = await _fetch_status(client)
+            _cache_set("status", status)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Achtergrond status-refresh mislukt: %s", exc)
+        try:
+            metrics = await _fetch_metrics(client)
+            _cache_set("metrics", metrics)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Achtergrond metrics-refresh mislukt: %s", exc)
+
+    logger.info("Achtergrond-refresh gestopt")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     logger.info("Starting IPFS Cluster Manager — cluster=%s", settings.cluster_api_url)
@@ -100,13 +155,26 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
             settings.keycloak_client_id,
         )
         try:
-            # Doe een initial fetch zodat we eventuele config-fouten direct zien
             await _get_token_provider().get_token()
         except Exception as exc:  # noqa: BLE001
             logger.error("Initiële Keycloak token-fetch faalde: %s", exc)
     elif settings.cluster_jwt:
         logger.info("Statisch CLUSTER_JWT in gebruik (geen auto-refresh)")
+
+    refresh_task: Optional[asyncio.Task] = None
+    if settings.background_refresh_interval > 0:
+        refresh_task = asyncio.create_task(
+            _background_refresh(settings.background_refresh_interval)
+        )
+
     yield
+
+    if refresh_task is not None:
+        refresh_task.cancel()
+        try:
+            await refresh_task
+        except asyncio.CancelledError:
+            pass
     if _token_provider is not None:
         await _token_provider.aclose()
     logger.info("Shutting down IPFS Cluster Manager")
@@ -202,13 +270,7 @@ async def api_health(client: ClusterClient = Depends(get_client)) -> dict:
     return {"ok": ok}
 
 
-@app.get("/api/status")
-async def api_status(client: ClusterClient = Depends(get_client)) -> dict:
-    """Verzamel alle dashboard-gegevens in één call.
-
-    Levert: cluster info, peers, alerts, en het aantal pins per node
-    (afgeleid uit de allocations — dat is de canonieke replica-mapping).
-    """
+async def _fetch_status(client: ClusterClient) -> dict:
     peer_id, version, peers, alerts, allocations = await asyncio.gather(
         asyncio.create_task(client.id()),
         asyncio.create_task(client.version()),
@@ -224,13 +286,11 @@ async def api_status(client: ClusterClient = Depends(get_client)) -> dict:
     allocations = _ok(allocations) or []
     peers_list = _ok(peers) or []
 
-    # Pins per node tellen op basis van het allocations veld
     pins_per_node: dict[str, int] = {}
     for pin in allocations:
         for alloc in pin.get("allocations") or []:
             pins_per_node[alloc] = pins_per_node.get(alloc, 0) + 1
 
-    # Verrijk peers met pin-count en human-readable info
     peer_rows = []
     for p in peers_list:
         pid = p.get("id") or ""
@@ -257,6 +317,15 @@ async def api_status(client: ClusterClient = Depends(get_client)) -> dict:
         "peer_count": len(peer_rows),
         "peers": peer_rows,
     }
+
+
+@app.get("/api/status")
+async def api_status(client: ClusterClient = Depends(get_client)) -> dict:
+    """Verzamel alle dashboard-gegevens in één call (serveert gecachede data als beschikbaar)."""
+    cached = _cache_get("status")
+    if cached is not None:
+        return cached
+    return await _fetch_status(client)
 
 
 @app.get("/api/pins")
@@ -375,9 +444,7 @@ async def api_bulk_unpin(
     }
 
 
-@app.get("/api/metrics")
-async def api_metrics(client: ClusterClient = Depends(get_client)) -> dict:
-    """Cluster-brede metrics: vrije schijfruimte, pinqueue, ping-validiteit en pin-errors."""
+async def _fetch_metrics(client: ClusterClient) -> dict:
     freespace_raw, pinqueue_raw, ping_raw, pin_errors = await asyncio.gather(
         asyncio.create_task(client.metrics("freespace")),
         asyncio.create_task(client.metrics("pinqueue")),
@@ -432,6 +499,15 @@ async def api_metrics(client: ClusterClient = Depends(get_client)) -> dict:
         "restart_enabled": bool(settings.restart_webhook_url),
         "ipfs_restart_configured": list(settings.ipfs_api_urls_map.keys()),
     }
+
+
+@app.get("/api/metrics")
+async def api_metrics(client: ClusterClient = Depends(get_client)) -> dict:
+    """Cluster-brede metrics (serveert gecachede data als beschikbaar)."""
+    cached = _cache_get("metrics")
+    if cached is not None:
+        return cached
+    return await _fetch_metrics(client)
 
 
 @app.post("/api/peers/{peer_id}/restart-ipfs")

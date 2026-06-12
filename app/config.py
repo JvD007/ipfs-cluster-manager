@@ -72,6 +72,8 @@ class Settings:
         return result
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = int(os.getenv("PORT", "8765"))
+    # Achtergrond-refresh interval in seconden (0 = uitgeschakeld)
+    background_refresh_interval: int = int(os.getenv("BACKGROUND_REFRESH_INTERVAL", "30"))
 
     @property
     def keycloak_configured(self) -> bool:
